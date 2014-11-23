@@ -19,7 +19,7 @@ s9 = [11, 5, 15, 0, 7, 2, 9, 13, 4, 8, 1, 12, 14, 10, 3, 6]
 def bitstr(n, width=None):
     """return the binary representation of n as a string and
       optionally zero-fill (pad) it to a given length
-   """
+    """
     result = list()
     while n:
         result.append(str(n % 2))
@@ -33,7 +33,7 @@ def bitstr(n, width=None):
 def mask(n):
     """Return a bitmask of length n (suitable for masking against an
       int to coerce the size to a given length)
-   """
+    """
     if n >= 0:
         return 2 ** n - 1
     else:
