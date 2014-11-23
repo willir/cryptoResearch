@@ -4,6 +4,9 @@
 POC implementation of LBlock Cipher (http://eprint.iacr.org/2011/345.pdf)
 """
 
+import sys
+import math
+
 s0 = [14, 9, 15, 0, 13, 4, 10, 11, 1, 2, 8, 3, 7, 6, 12, 5]
 s1 = [4, 11, 14, 9, 15, 13, 0, 10, 7, 12, 5, 6, 2, 8, 1, 3]
 s2 = [1, 14, 7, 12, 15, 13, 0, 6, 11, 5, 9, 3, 2, 4, 8, 10]
@@ -27,7 +30,9 @@ def bitstr(n, width=None):
     if (width is not None) and len(result) < width:
         result.extend(['0'] * (width - len(result)))
     result.reverse()
-    return ''.join(result)
+
+    return '|'.join([''.join(result[i*4:i*4+4]) for i in range(int(math.ceil(len(result)/4)))])
+#    return ''.join(result)
 
 
 def mask(n):
@@ -84,14 +89,18 @@ def keySchedule(K):
     return RK
 
 
-def Enc(P, RK):
+def Enc(P, RK, innerStates: list = None):
     X1 = (P >> 32) & 0xffffffff
     X0 = P & 0xffffffff
 
     for r in range(32):
         nextX = F(X1 ^ RK[r]) ^ rol(X0, rotations=8, width=32)
+        if innerStates:
+            innerStates.append(X0)
         X0 = X1
         X1 = nextX
+    innerStates.append(X0)
+    innerStates.append(X1)
     return (X0 << 32) | X1
 
 
@@ -116,11 +125,29 @@ def decrypt(cipher: b'', key: b'') -> b'':
     return Dec(cipher, RK)
 
 
+def showKeyDiff():
+    mKey1 = 0xe123456789abcdeffedc
+    mKey2 = mKey1 ^ (mask(4) << 75)
+
+    rKey1 = keySchedule(mKey1)
+    rKey2 = keySchedule(mKey2)
+
+    diffRKey = list()
+    for r in range(32):
+        diffRKey.append(rKey1[r] ^ rKey2[r])
+
+    for r in range(32):
+        print(str(r) + ':' + bitstr(diffRKey[r], width=32))
+
+
 if __name__ == '__main__':
 
     # rKeys = Key_Schedule(0x0123456789abcdeffedc)
     # for rKey in rKeys:
     #     print(hex(rKey))
+
+    showKeyDiff()
+    sys.exit(0)
 
     key1 = 0x00000000000000000000
     key2 = 0x0123456789abcdeffedc
