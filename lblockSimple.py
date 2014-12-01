@@ -165,8 +165,7 @@ def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: i
     print(len(innerStates))
 
     for r in range(len(innerStates)):
-        print(str(r + startRound - 1) + ':' + bitstr(innerStates[r], width=32))
-
+        print(str(r + startRound - 1).zfill(2) + ':' + bitstr(innerStates[r], width=32))
 
 
 if __name__ == '__main__':
