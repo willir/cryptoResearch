@@ -3,6 +3,7 @@
 """
 POC implementation of LBlock Cipher (http://eprint.iacr.org/2011/345.pdf)
 """
+from builtins import reversed
 
 import sys
 import math
@@ -79,7 +80,7 @@ def ror(n, rotations=1, width=8):
     return (n >> rotations) | ((n << (width - rotations)) & mask(width))
 
 
-def F(x, diffM: bool=False):
+def F(x, diffM: bool=False, sBoxesUsed: list=None):
     sBoxes = sBoxesReal if not diffM else sBoxesDiff
 
     lx = numUtils.toArray(x, width=8, reverse=True)
@@ -87,6 +88,10 @@ def F(x, diffM: bool=False):
     # SBoxes:
     for i in range(8):
         lx[i] = sBoxes[i][lx[i]]
+
+    if sBoxesUsed is not None:
+        sBoxesUsed.append(map(lambda num: 1 if num != 0 else 0, reversed(lx)))
+
     #Permutation:
     lx = [lx[1], lx[3], lx[0], lx[2], lx[5], lx[7], lx[4], lx[6]]
 
@@ -107,13 +112,13 @@ def keySchedule(K: int, diffM: bool=False):
     return RK
 
 
-def Enc(P, RK, diffM: bool=False, innerStates: list=None, minRound: int=0, maxRound: int=31):
+def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: list=None):
     X1 = (P >> 32) & 0xffffffff
     X0 = P & 0xffffffff
 
     for r in range(minRound, maxRound + 1):
         nextX = X1 ^ RK[r] if not diffM else X1 | RK[r]
-        fRes = F(nextX, diffM=diffM)
+        fRes = F(nextX, diffM=diffM, sBoxesUsed=sBoxesUsed)
         rolled = rol(X0, rotations=8, width=32)
         nextX = fRes ^ rolled if not diffM else fRes | rolled
 
@@ -160,12 +165,17 @@ def showKeyDiff():
 def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: int=32):
     rKeyDiff = keySchedule(keyDiff, diffM=True)
     innerStates = []
-    Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound)
+    sBoxedUsed = []
+    Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
+        sBoxesUsed=sBoxedUsed)
 
-    print(len(innerStates))
-
+    print(len(innerStates), 'InnerStates:')
     for r in range(len(innerStates)):
         print(str(r + startRound - 1).zfill(2) + ':' + bitstr(innerStates[r], width=32))
+
+    print(len(sBoxedUsed), 'SBoxes:')
+    for r in range(len(sBoxedUsed)):
+        print(str(r + startRound - 1).zfill(2) + ':' + '|'.join(map(str, sBoxedUsed[r])))
 
 
 if __name__ == '__main__':
