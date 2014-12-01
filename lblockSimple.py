@@ -4,9 +4,9 @@
 POC implementation of LBlock Cipher (http://eprint.iacr.org/2011/345.pdf)
 """
 from builtins import reversed
-
+import os
 import sys
-import math
+
 import numUtils
 
 
@@ -23,64 +23,91 @@ sBoxesReal = [
     [11, 5, 15, 0, 7, 2, 9, 13, 4, 8, 1, 12, 14, 10, 3, 6],
 ]
 
-sBoxesDiff = [[0] + [0xf]*15]*10
+sBoxesDiff = [[0] + [0xf] * 15] * 10
+
+
+class KeyDiffRes: pass
+class SBoxesUsed: pass
+
+
+class SBoxesUsed:
+    data = None
+    startRound = -1
+    weight = -1
+
+    def __init__(self, startRound):
+        self.data = []
+        self.startRound = startRound
+
+    def append(self, sBox: list):
+        if not isinstance(sBox, list):
+            raise TypeError('type(sBox):%s have to be list', str(type(sBox)))
+        self.data.append(sBox)
+
+    def getWeight(self):
+        if len(self.data) != 8:
+            sys.exit('len(self.sBoxesUsed):%s != 8' % len(self.data))
+        if self.weight < 0:
+            self.weight = sum(map(lambda el: el.count(1), self.data))
+        return self.weight
+
+    def cmp(self, other: SBoxesUsed) -> int:
+        return self.getWeight() - other.getWeight()
+
+    def __str__(self):
+        res = ''
+        res += '%d %s\n' % (self.getWeight(), 'SBoxes:')
+        for r in range(len(self.data)):
+            res += '%s : %s\n' % (str(r + self.startRound - 1).zfill(2), '|'.join(map(str, self.data[r])))
+        return res
+
+    def __eq__(self, other: SBoxesUsed):
+        return self.cmp(other) == 0
+
+    def __lt__(self, other: SBoxesUsed):
+        return self.cmp(other) < 0
+
+
+class KeyDiffRes:
+    startRound = -1
+    stopRound = -1
+    mKeyDiff = -1
+    rKeyDiff = None
+    innerStates = None
+    sBoxesUsed = None
+
+    def __init__(self, startRound: int, stopRound: int, mKeyDiff: int, rKeyDiff: list, innerStates: list,
+                 sBoxesUsed: SBoxesUsed):
+        self.startRound = startRound
+        self.stopRound = stopRound
+        self.mKeyDiff = mKeyDiff
+        self.rKeyDiff = rKeyDiff
+        self.innerStates = innerStates
+        self.sBoxesUsed = sBoxesUsed
+
+    def getMKeyShift(self):
+        num = self.mKeyDiff
+        shift = 0
+        while (num & 1) == 0:
+            shift += 1
+            num >>= 1
+        return shift
+
+    def cmp(self, other: KeyDiffRes) -> int:
+        return self.sBoxesUsed.cmp(other.sBoxesUsed)
+
+    def __eq__(self, other: KeyDiffRes):
+        return self.cmp(other) == 0
+
+    def __lt__(self, other: KeyDiffRes):
+        return self.cmp(other) < 0
 
 
 def diffS(inD: int) -> int:
-    return 0xf if inD != 0 else 0x0;
+    return 0xf if inD != 0 else 0x0
 
 
-def bitstr(n, width=None):
-    """return the binary representation of n as a string and
-      optionally zero-fill (pad) it to a given length
-    """
-    result = list()
-    while n:
-        result.append(str(n % 2))
-        n = int(n / 2)
-    if (width is not None) and len(result) < width:
-        result.extend(['0'] * (width - len(result)))
-    result.reverse()
-
-    return '|'.join([''.join(result[i * 4:i * 4 + 4]) for i in range(int(math.ceil(len(result) / 4)))])
-
-
-# return ''.join(result)
-
-
-def mask(n):
-    """Return a bitmask of length n (suitable for masking against an
-      int to coerce the size to a given length)
-    """
-    if n >= 0:
-        return 2 ** n - 1
-    else:
-        return 0
-
-
-def rol(n, rotations=1, width=8):
-    """Return a given number of bitwise left rotations of an integer n,
-       for a given bit field width.
-    """
-    rotations %= width
-    if rotations < 1:
-        return n
-    n &= mask(width)  # Should it be an error to truncate here?
-    return ((n << rotations) & mask(width)) | (n >> (width - rotations))
-
-
-def ror(n, rotations=1, width=8):
-    """Return a given number of bitwise right rotations of an integer n,
-       for a given bit field width.
-    """
-    rotations %= width
-    if rotations < 1:
-        return n
-    n &= mask(width)
-    return (n >> rotations) | ((n << (width - rotations)) & mask(width))
-
-
-def F(x, diffM: bool=False, sBoxesUsed: list=None):
+def F(x, diffM: bool=False, sBoxesUsed: SBoxesUsed=None):
     sBoxes = sBoxesReal if not diffM else sBoxesDiff
 
     lx = numUtils.toArray(x, width=8, reverse=True)
@@ -90,9 +117,9 @@ def F(x, diffM: bool=False, sBoxesUsed: list=None):
         lx[i] = sBoxes[i][lx[i]]
 
     if sBoxesUsed is not None:
-        sBoxesUsed.append(map(lambda num: 1 if num != 0 else 0, reversed(lx)))
+        sBoxesUsed.append(list(map(lambda num: 1 if num != 0 else 0, reversed(lx))))
 
-    #Permutation:
+    # Permutation:
     lx = [lx[1], lx[3], lx[0], lx[2], lx[5], lx[7], lx[4], lx[6]]
 
     return numUtils.arrToInt(lx, reverse=True)
@@ -102,24 +129,24 @@ def keySchedule(K: int, diffM: bool=False):
     sBoxes = sBoxesReal if not diffM else sBoxesDiff
 
     RK = list()
-    RK.append((K & (mask(32) << 48)) >> 48)  # 32 left most bits
+    RK.append((K & (numUtils.mask(32) << 48)) >> 48)  # 32 left most bits
     for r in range(1, 32):
-        K = rol(K, rotations=29, width=80)
-        K = (sBoxes[9][K >> 76] << 76) | (sBoxes[8][(K >> 72) & 0xf] << 72) | (K & mask(72))
+        K = numUtils.rol(K, rotations=29, width=80)
+        K = (sBoxes[9][K >> 76] << 76) | (sBoxes[8][(K >> 72) & 0xf] << 72) | (K & numUtils.mask(72))
         if not diffM:
             K ^= r << 46
-        RK.append((K & (mask(32) << 48)) >> 48)  # 32 left most bits
+        RK.append((K & (numUtils.mask(32) << 48)) >> 48)  # 32 left most bits
     return RK
 
 
-def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: list=None):
+def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed=None):
     X1 = (P >> 32) & 0xffffffff
     X0 = P & 0xffffffff
 
     for r in range(minRound, maxRound + 1):
         nextX = X1 ^ RK[r] if not diffM else X1 | RK[r]
         fRes = F(nextX, diffM=diffM, sBoxesUsed=sBoxesUsed)
-        rolled = rol(X0, rotations=8, width=32)
+        rolled = numUtils.rol(X0, rotations=8, width=32)
         nextX = fRes ^ rolled if not diffM else fRes | rolled
 
         if innerStates is not None:
@@ -137,7 +164,7 @@ def Dec(P, RK):
     X1 = P & 0xffffffff
 
     for r in range(31, -1, -1):
-        prevX = ror(F(X0 ^ RK[r]) ^ X1, rotations=8, width=32)
+        prevX = numUtils.ror(F(X0 ^ RK[r]) ^ X1, rotations=8, width=32)
         X1 = X0
         X0 = prevX
     return (X1 << 32) | X0
@@ -154,34 +181,54 @@ def decrypt(cipher: int, key: int) -> int:
 
 
 def showKeyDiff():
-
     mKeyDiff = 0xf << 75
     rKeyDiff = keySchedule(mKeyDiff, diffM=True)
 
     for r in range(32):
-        print(str(r) + ':' + bitstr(rKeyDiff[r], width=32))
+        print(str(r) + ':' + numUtils.bitstr(rKeyDiff[r], width=32))
 
 
 def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: int=32):
     rKeyDiff = keySchedule(keyDiff, diffM=True)
     innerStates = []
-    sBoxedUsed = []
+    sBoxesUsed = SBoxesUsed(startRound=startRound)
     Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
-        sBoxesUsed=sBoxedUsed)
+        sBoxesUsed=sBoxesUsed)
 
     print(len(innerStates), 'InnerStates:')
     for r in range(len(innerStates)):
-        print(str(r + startRound - 1).zfill(2) + ':' + bitstr(innerStates[r], width=32))
+        print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStates[r], width=32))
 
-    print(len(sBoxedUsed), 'SBoxes:')
-    for r in range(len(sBoxedUsed)):
-        print(str(r + startRound - 1).zfill(2) + ':' + '|'.join(map(str, sBoxedUsed[r])))
+    print(sBoxesUsed)
+
+
+def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
+    res = []
+    for shift in range(80 - 4 + 1):
+        keyDiff = 0xf << shift
+        rKeyDiff = keySchedule(keyDiff, diffM=True)
+        innerStates = []
+        sBoxesUsed = SBoxesUsed(startRound=startRound)
+        Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
+            sBoxesUsed=sBoxesUsed)
+
+        res.append(KeyDiffRes(startRound=startRound, stopRound=stopRound, mKeyDiff=keyDiff, rKeyDiff=rKeyDiff,
+                              innerStates=innerStates, sBoxesUsed=sBoxesUsed))
+
+    res.sort()
+
+    for i in range(len(res)):
+        if i != 0:
+            print('**************************************************************\n\n')
+        print('--- %d ---' % i)
+        print(res[i].getMKeyShift(), numUtils.bitstr(res[i].mKeyDiff, width=80))
+        print(res[i].sBoxesUsed)
 
 
 if __name__ == '__main__':
-
-#    showKeyDiff()
-    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=8, stopRound=20)
+    # showKeyDiff()
+#    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 14, startRound=0, stopRound=7)
+    getMintDiff(pDiff=0x0, startRound=0, stopRound=7)
     sys.exit(0)
 
     key1 = 0x00000000000000000000
