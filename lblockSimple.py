@@ -159,14 +159,24 @@ def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates
     return (X0 << 32) | X1
 
 
-def Dec(P, RK):
+def Dec(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed=None):
     X0 = (P >> 32) & 0xffffffff
     X1 = P & 0xffffffff
 
-    for r in range(31, -1, -1):
-        prevX = numUtils.ror(F(X0 ^ RK[r]) ^ X1, rotations=8, width=32)
+    xorFunc = lambda x, y: x ^ y if not diffM else lambda x, y: x | y
+
+    for r in range(maxRound, minRound - 1, -1):
+        fRes = F(xorFunc(X0, RK[r]), diffM=diffM, sBoxesUsed=sBoxesUsed)
+        fRes = xorFunc(fRes, X1)
+        prevX = numUtils.ror(fRes, rotations=8, width=32)
+
+        if innerStates is not None:
+            innerStates.append(X1)
         X1 = X0
         X0 = prevX
+    if innerStates is not None:
+        innerStates.append(X1)
+        innerStates.append(X0)
     return (X1 << 32) | X0
 
 
@@ -192,7 +202,9 @@ def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: i
     rKeyDiff = keySchedule(keyDiff, diffM=True)
     innerStates = []
     sBoxesUsed = SBoxesUsed(startRound=startRound)
-    Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
+    method = Enc if startRound < stopRound else Dec
+
+    method(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
         sBoxesUsed=sBoxesUsed)
 
     print(len(innerStates), 'InnerStates:')
@@ -204,12 +216,13 @@ def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: i
 
 def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
     res = []
+    method = Enc if startRound < stopRound else Dec
     for shift in range(80 - 4 + 1):
         keyDiff = 0xf << shift
         rKeyDiff = keySchedule(keyDiff, diffM=True)
         innerStates = []
         sBoxesUsed = SBoxesUsed(startRound=startRound)
-        Enc(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
+        method(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
             sBoxesUsed=sBoxesUsed)
 
         res.append(KeyDiffRes(startRound=startRound, stopRound=stopRound, mKeyDiff=keyDiff, rKeyDiff=rKeyDiff,
