@@ -22,8 +22,10 @@ sBoxesReal = [
     [8, 7, 14, 5, 15, 13, 0, 6, 11, 12, 9, 10, 2, 4, 1, 3],
     [11, 5, 15, 0, 7, 2, 9, 13, 4, 8, 1, 12, 14, 10, 3, 6],
 ]
-
 sBoxesDiff = [[0] + [0xf] * 15] * 10
+
+permTable = [1, 3, 0, 2, 5, 7, 4, 6]  # [2, 0, 3, 1, 6, 4, 7, 5]
+reversePermTable = numUtils.reversePermutation(permTable)
 
 
 class KeyDiffRes: pass
@@ -128,7 +130,7 @@ def F(x, diffM: bool=False, sBoxesUsed: SBoxesUsed=None):
         sBoxesUsed.append(list(map(lambda num: 1 if num != 0 else 0, reversed(lx))))
 
     # Permutation:
-    lx = [lx[1], lx[3], lx[0], lx[2], lx[5], lx[7], lx[4], lx[6]]
+    lx = numUtils.doPermutation(lx, permTable)
 
     return numUtils.arrToInt(lx, reverse=True)
 

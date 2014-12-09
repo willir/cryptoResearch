@@ -70,3 +70,13 @@ def ror(n, rotations=1, width=8):
     n &= mask(width)
     return (n >> rotations) | ((n << (width - rotations)) & mask(width))
 
+
+def doPermutation(arr: list, perm: list):
+    return [arr[i] for i in perm]
+
+
+def reversePermutation(permutation: list):
+    res = [0] * len(permutation)
+    for i in range(len(permutation)):
+        res[permutation[i]] = i
+    return res
