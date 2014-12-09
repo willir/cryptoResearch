@@ -45,11 +45,19 @@ class SBoxesUsed:
         self.data.append(sBox)
 
     def getWeight(self):
-        if len(self.data) != 8:
-            sys.exit('len(self.sBoxesUsed):%s != 8' % len(self.data))
-        if self.weight < 0:
-            self.weight = sum(map(lambda el: el.count(1), self.data))
+        if self.weight >= 0:
+            return self.weight
+
+        if not self.data:
+            sys.exit('self.data is empty')
+        if len(self.data[0]) != 8:
+            sys.exit('len(self.sBoxesUsed):%s != 8' % len(self.data[0]))
+
+        self.weight = sum(map(lambda el: el.count(1), self.data))
         return self.weight
+
+    def reverse(self):
+        self.data.reverse()
 
     def cmp(self, other: SBoxesUsed) -> int:
         return self.getWeight() - other.getWeight()
@@ -139,7 +147,8 @@ def keySchedule(K: int, diffM: bool=False):
     return RK
 
 
-def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed=None):
+def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None,
+        sBoxesUsed: SBoxesUsed=None):
     X1 = (P >> 32) & 0xffffffff
     X0 = P & 0xffffffff
 
@@ -159,11 +168,15 @@ def Enc(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates
     return (X0 << 32) | X1
 
 
-def Dec(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed=None):
+def Dec(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates: list=None,
+        sBoxesUsed: SBoxesUsed=None):
     X0 = (P >> 32) & 0xffffffff
     X1 = P & 0xffffffff
 
-    xorFunc = lambda x, y: x ^ y if not diffM else lambda x, y: x | y
+    if minRound > maxRound:
+        raise ValueError("minRound:%d > maxRound:%d" % (minRound, maxRound))
+
+    xorFunc = (lambda x, y: x ^ y) if not diffM else (lambda a, b: a | b)
 
     for r in range(maxRound, minRound - 1, -1):
         fRes = F(xorFunc(X0, RK[r]), diffM=diffM, sBoxesUsed=sBoxesUsed)
@@ -177,6 +190,10 @@ def Dec(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates
     if innerStates is not None:
         innerStates.append(X1)
         innerStates.append(X0)
+        innerStates.reverse()
+    if sBoxesUsed:
+        sBoxesUsed.reverse()
+
     return (X1 << 32) | X0
 
 
@@ -201,11 +218,16 @@ def showKeyDiff():
 def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: int=32):
     rKeyDiff = keySchedule(keyDiff, diffM=True)
     innerStates = []
+    if startRound > stopRound:
+        method = Dec
+        startRound, stopRound = stopRound, startRound
+    else:
+        method = Enc
+
     sBoxesUsed = SBoxesUsed(startRound=startRound)
-    method = Enc if startRound < stopRound else Dec
 
     method(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
-        sBoxesUsed=sBoxesUsed)
+           sBoxesUsed=sBoxesUsed)
 
     print(len(innerStates), 'InnerStates:')
     for r in range(len(innerStates)):
@@ -223,7 +245,7 @@ def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
         innerStates = []
         sBoxesUsed = SBoxesUsed(startRound=startRound)
         method(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
-            sBoxesUsed=sBoxesUsed)
+               sBoxesUsed=sBoxesUsed)
 
         res.append(KeyDiffRes(startRound=startRound, stopRound=stopRound, mKeyDiff=keyDiff, rKeyDiff=rKeyDiff,
                               innerStates=innerStates, sBoxesUsed=sBoxesUsed))
@@ -240,8 +262,9 @@ def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
 
 if __name__ == '__main__':
     # showKeyDiff()
-#    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 14, startRound=0, stopRound=7)
-    getMintDiff(pDiff=0x0, startRound=0, stopRound=7)
+    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 14, startRound=8, stopRound=19)
+#    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=31, stopRound=20)
+    #    getMintDiff(pDiff=0x0, startRound=0, stopRound=7)
     sys.exit(0)
 
     key1 = 0x00000000000000000000
