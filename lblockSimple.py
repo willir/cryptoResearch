@@ -262,7 +262,7 @@ def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
 
 if __name__ == '__main__':
     # showKeyDiff()
-    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 14, startRound=8, stopRound=19)
+    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=8, stopRound=19) # Forward matching
 #    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=31, stopRound=20)
     #    getMintDiff(pDiff=0x0, startRound=0, stopRound=7)
     sys.exit(0)
