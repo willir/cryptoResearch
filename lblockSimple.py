@@ -66,7 +66,7 @@ class SBoxesUsed:
         res = ''
         res += '%d %s\n' % (self.getWeight(), 'SBoxes:')
         for r in range(len(self.data)):
-            res += '%s : %s\n' % (str(r + self.startRound - 1).zfill(2), '|'.join(map(str, self.data[r])))
+            res += '%s : %s\n' % (str(r + self.startRound).zfill(2), '|'.join(map(str, self.data[r])))
         return res
 
     def __eq__(self, other: SBoxesUsed):
