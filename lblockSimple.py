@@ -135,6 +135,21 @@ def F(x, diffM: bool=False, sBoxesUsed: SBoxesUsed=None):
     return numUtils.arrToInt(lx, reverse=True)
 
 
+def reverseF(x: int, xPrev: int) -> (int, list):
+    """
+    Computes reverse F for computing sboxes which are used for getting specific output nibbles.
+    :param x: x[r]
+    :param xPrev: x[r-1]
+    :return: (x, sBoxesUsed)
+    """
+    perm = numUtils.toArray(x, width=8, reverse=True)
+    sBoxesUsed = numUtils.doPermutation(perm, reversePermTable)
+
+    sBoxesUsed.reverse()
+    newX = xPrev | numUtils.arrToInt(sBoxesUsed, reverse=False)
+    return (newX, list(map(lambda x: 1 if x > 0 else 0, sBoxesUsed)))
+
+
 def keySchedule(K: int, diffM: bool=False):
     sBoxes = sBoxesReal if not diffM else sBoxesDiff
 
@@ -199,6 +214,25 @@ def Dec(P, RK, diffM: bool=False, minRound: int=0, maxRound: int=31, innerStates
     return (X1 << 32) | X0
 
 
+def reverseEnc(P, rounds: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed=None):
+    X1 = (P >> 32) & 0xffffffff
+    X0 = P & 0xffffffff
+
+    innerStates.append(X1)
+
+    for r in range(rounds):
+        (xPrev, curSBoxes) = reverseF(X1, X0)
+
+        X0 = numUtils.ror(X1, rotations=8, width=32)
+        X1 = xPrev
+
+        sBoxesUsed.append(curSBoxes)
+        innerStates.append(X1)
+
+    innerStates.reverse()
+    sBoxesUsed.reverse()
+
+
 def encrypt(plain: int, key: int) -> int:
     RK = keySchedule(key)
     return Enc(plain, RK)
@@ -236,6 +270,16 @@ def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: i
         print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStates[r], width=32))
 
     print(sBoxesUsed)
+
+    sBoxesReverse = SBoxesUsed(startRound=startRound)
+    innerStatesReverse = []
+    reverseEnc(0xf << 20 | 0xf, rounds=8, innerStates=innerStatesReverse, sBoxesUsed=sBoxesReverse)
+
+    print(len(innerStatesReverse), 'InnerStatesReverse:')
+    for r in range(len(innerStatesReverse)):
+        print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStatesReverse[r], width=32))
+
+    print(sBoxesReverse)
 
 
 def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
