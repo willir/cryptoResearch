@@ -64,6 +64,15 @@ class SBoxesUsed:
     def cmp(self, other: SBoxesUsed) -> int:
         return self.getWeight() - other.getWeight()
 
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, key: int) -> list:
+        return self.data[key]
+
+    def __setitem__(self, key: int, value: list):
+        self.data[key] = value
+
     def __str__(self):
         res = ''
         res += '%d %s\n' % (self.getWeight(), 'SBoxes:')
@@ -147,7 +156,7 @@ def reverseF(x: int, xPrev: int) -> (int, list):
 
     sBoxesUsed.reverse()
     newX = xPrev | numUtils.arrToInt(sBoxesUsed, reverse=False)
-    return (newX, list(map(lambda x: 1 if x > 0 else 0, sBoxesUsed)))
+    return newX, list(map(lambda x: 1 if x > 0 else 0, sBoxesUsed))
 
 
 def keySchedule(K: int, diffM: bool=False):
@@ -229,6 +238,8 @@ def reverseEnc(P, rounds: int=31, innerStates: list=None, sBoxesUsed: SBoxesUsed
         sBoxesUsed.append(curSBoxes)
         innerStates.append(X1)
 
+    innerStates.append(X0)
+
     innerStates.reverse()
     sBoxesUsed.reverse()
 
@@ -251,7 +262,52 @@ def showKeyDiff():
         print(str(r) + ':' + numUtils.bitstr(rKeyDiff[r], width=32))
 
 
-def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: int=32):
+def showDiffRes(sBoxesUsed: SBoxesUsed, startRound: int, innerStates: list = None):
+    if innerStates:
+        print(len(innerStates), 'InnerStates:')
+        for r in range(len(innerStates)):
+            print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStates[r], width=32))
+
+    print(sBoxesUsed)
+
+
+def getMatchingDiff(keyDiff: int, mathBits: int, startRound: int=0, stopRound: int=32) -> (SBoxesUsed, list):
+    """
+    :return: tuple(Sboxes, innerState) with 1 in bits which are used in this cases.
+    """
+    rKeyDiff = keySchedule(keyDiff, diffM=True)
+    innerStates = []
+    if startRound > stopRound:
+        method = Dec
+        startRound, stopRound = stopRound, startRound
+    else:
+        method = Enc
+
+    sBoxesUsed = SBoxesUsed(startRound=startRound)
+
+    method(P=0, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
+           sBoxesUsed=sBoxesUsed)
+
+    sBoxesReverse = SBoxesUsed(startRound=startRound)
+    innerStatesReverse = []
+    reverseEnc(mathBits, rounds=stopRound-startRound+1, innerStates=innerStatesReverse, sBoxesUsed=sBoxesReverse)
+
+    if len(sBoxesUsed) != len(sBoxesReverse):
+        raise ValueError("len(sBoxesUsed):%d != len(sBoxesReverse):%d" % (len(sBoxesUsed), len(sBoxesReverse)))
+
+    if len(innerStates) != len(innerStatesReverse):
+        raise ValueError("len(innerStates):%d != len(innerStatesReverse):%d" %
+                         (len(innerStates), len(innerStatesReverse)))
+
+    for i in range(len(sBoxesUsed)):
+        sBoxesUsed[i] = [x & y for x, y in zip(sBoxesUsed[i], sBoxesReverse[i])]
+
+    innerStates = list(map(lambda x: x[0] & x[1], zip(innerStates, innerStatesReverse)))
+
+    return sBoxesUsed, innerStates
+
+
+def showInnerStateDiff(pDiff: int, keyDiff: int, outDiff: int=0, startRound: int=0, stopRound: int=32):
     rKeyDiff = keySchedule(keyDiff, diffM=True)
     innerStates = []
     if startRound > stopRound:
@@ -265,21 +321,28 @@ def showInnerStateDiff(pDiff: int, keyDiff: int, startRound: int=0, stopRound: i
     method(P=pDiff, RK=rKeyDiff, diffM=True, innerStates=innerStates, minRound=startRound, maxRound=stopRound,
            sBoxesUsed=sBoxesUsed)
 
+    if outDiff:
+        sBoxesReverse = SBoxesUsed(startRound=startRound)
+        innerStatesReverse = []
+        reverseEnc(outDiff, rounds=stopRound-startRound+1, innerStates=innerStatesReverse, sBoxesUsed=sBoxesReverse)
+
+        if len(sBoxesUsed) != len(sBoxesReverse):
+            raise ValueError("len(sBoxesUsed):%d != len(sBoxesReverse):%d" % (len(sBoxesUsed), len(sBoxesReverse)))
+
+        if len(innerStates) != len(innerStatesReverse):
+            raise ValueError("len(innerStates):%d != len(innerStatesReverse):%d" %
+                             (len(innerStates), len(innerStatesReverse)))
+
+        for i in range(len(sBoxesUsed)):
+            sBoxesUsed[i] = [x & y for x, y in zip(sBoxesUsed[i], sBoxesReverse[i])]
+
+        innerStates = list(map(lambda x: x[0] & x[1], zip(innerStates, innerStatesReverse)))
+
     print(len(innerStates), 'InnerStates:')
     for r in range(len(innerStates)):
         print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStates[r], width=32))
 
     print(sBoxesUsed)
-
-    sBoxesReverse = SBoxesUsed(startRound=startRound)
-    innerStatesReverse = []
-    reverseEnc(0xf << 20 | 0xf, rounds=8, innerStates=innerStatesReverse, sBoxesUsed=sBoxesReverse)
-
-    print(len(innerStatesReverse), 'InnerStatesReverse:')
-    for r in range(len(innerStatesReverse)):
-        print(str(r + startRound - 1).zfill(2) + ':' + numUtils.bitstr(innerStatesReverse[r], width=32))
-
-    print(sBoxesReverse)
 
 
 def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
@@ -308,7 +371,9 @@ def getMintDiff(pDiff: int, startRound: int=0, stopRound: int=32):
 
 if __name__ == '__main__':
     # showKeyDiff()
-    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=8, stopRound=19) # Forward matching
+#    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, outDiff=0xf << 20 | 0xf, startRound=8, stopRound=19)  # Forward matching
+    sBoxesUsed, innerStates = getMatchingDiff(keyDiff=0xf << 75, mathBits=0xf << 20 | 0xf, startRound=8, stopRound=19)
+    showDiffRes(sBoxesUsed, innerStates=innerStates, startRound=8)
 #    showInnerStateDiff(pDiff=0x0, keyDiff=0xf << 75, startRound=31, stopRound=20)
     #    getMintDiff(pDiff=0x0, startRound=0, stopRound=7)
     sys.exit(0)
